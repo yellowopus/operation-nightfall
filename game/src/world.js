@@ -11,7 +11,7 @@ export function createWorld(scene) {
   for (const name of Object.keys(PALETTE)) {
     materials[name] = new THREE.MeshStandardMaterial({
       color: new THREE.Color(PALETTE[name]),
-      roughness: name === 'accent' || name === 'ink' ? 0.55 : 0.92,
+      roughness: name === 'accent' || name === 'ink' ? 0.48 : 0.78,
       metalness: 0.03,
     });
   }
@@ -141,12 +141,12 @@ export function createWorld(scene) {
   siteLabel('A', -11, -10);
   siteLabel('B', 11, 10);
 
-  scene.fog = new THREE.FogExp2(new THREE.Color('#070d16'), 0.032);
+  scene.fog = new THREE.FogExp2(new THREE.Color('#536a88'), 0.022);
 
-  const sky = new THREE.HemisphereLight(new THREE.Color('#15263f'), new THREE.Color(PALETTE.canvas), 0.42);
+  const sky = new THREE.HemisphereLight(new THREE.Color('#a9c1e8'), new THREE.Color(PALETTE.canvas), 1.35);
   scene.add(sky);
 
-  const key = new THREE.DirectionalLight(new THREE.Color(PALETTE.accent), 1.05);
+  const key = new THREE.DirectionalLight(new THREE.Color('#f8c675'), 1.6);
   key.position.set(12, 16, 9);
   key.target.position.set(0, 0, 0);
   key.castShadow = true;
@@ -159,15 +159,15 @@ export function createWorld(scene) {
   key.shadow.bias = -0.0006;
   scene.add(key, key.target);
 
-  const fill = new THREE.DirectionalLight(new THREE.Color(PALETTE.ink), 0.38);
+  const fill = new THREE.DirectionalLight(new THREE.Color(PALETTE.ink), 0.72);
   fill.position.set(-10, 12, -8);
   scene.add(fill);
 
-  const rim = new THREE.DirectionalLight(new THREE.Color('#8fb7e5'), 0.22);
+  const rim = new THREE.DirectionalLight(new THREE.Color('#8fb7e5'), 0.48);
   rim.position.set(-14, 9, 10);
   scene.add(rim);
 
-  for (const [x, z, intensity] of [[-11, -10, 20], [11, 10, 20], [0, 0, 10]]) {
+  for (const [x, z, intensity] of [[-11, -10, 30], [11, 10, 30], [0, 0, 16]]) {
     const lamp = new THREE.PointLight(new THREE.Color(PALETTE.accent), intensity, 13, 1.8);
     lamp.position.set(x, 3.2, z);
     group.add(lamp);

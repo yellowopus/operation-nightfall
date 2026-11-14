@@ -1,9 +1,9 @@
-// Nightfall's visual language: deep navy architecture with amber tactical accents.
+// Nightfall's visual language: readable blue-grey architecture with amber tactical accents.
 // The same six names are the CSS custom properties in index.html.
 export const PALETTE = {
-  canvas: '#0b1220',
-  surface: '#122031',
-  hairline: '#263854',
+  canvas: '#3c4c62',
+  surface: '#52647d',
+  hairline: '#7c8fab',
   ink: '#dce8f8',
   muted: '#667c99',
   accent: '#f2a838',
