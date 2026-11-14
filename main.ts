@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { buildDossier } from './vendor/makefun-threejs.ts';
 
@@ -17,10 +17,28 @@ const dossierCaps = {
   game_max_bytes: 50_331_648,
 } as const;
 
+/**
+ * Copies one declared asset directory into the dossier output. Throws a
+ * descriptive error when the declared source directory is missing.
+ */
+function copyAsset(source: string, target: string): void {
+  const sourcePath = resolve(sourceDir, source);
+  try {
+    statSync(sourcePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`Cannot copy "${source}": the source directory is missing: ${sourcePath}`, { cause: error });
+    }
+    throw error;
+  }
+
+  cpSync(sourcePath, resolve(outputDir, target), { recursive: true });
+}
+
 mkdirSync(outputDir, { recursive: true });
 
 for (const [source, target] of assets) {
-  cpSync(resolve(sourceDir, source), resolve(outputDir, target), { recursive: true });
+  copyAsset(source, target);
 }
 
 writeFileSync(resolve(outputDir, 'dossier.json'), buildDossier(outputDir, dossierCaps));
