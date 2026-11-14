@@ -1,177 +1,192 @@
-// The map: a closed grey room with cover, built from boxes. Every box is a collider for the
-// player and a surface a bullet stops on. Plain geometry only, no models and no textures.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 
+const MAP_WIDTH = 37;
+const MAP_DEPTH = 35;
+const WALL_HEIGHT = 5;
+
 export function createWorld(scene) {
   const group = new THREE.Group();
+  group.name = 'Kestrel District';
   scene.add(group);
 
-  const materials = {};
-  for (const name of Object.keys(PALETTE)) {
-    materials[name] = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(PALETTE[name]),
-      roughness: name === 'accent' || name === 'ink' ? 0.48 : 0.78,
-      metalness: 0.03,
-    });
-  }
+  const solids = new THREE.Group();
+  solids.name = 'Merged Solids';
+  const lamps = new THREE.Group();
+  lamps.name = 'Lamp Lights';
+  group.add(solids, lamps);
 
+  const materials = Object.fromEntries(Object.entries(PALETTE).map(([name, color]) => [
+    name,
+    new THREE.MeshStandardMaterial({
+      color: new THREE.Color(color),
+      roughness: name === 'accent' || name === 'ink' ? 0.45 : 0.8,
+      metalness: name === 'hairline' ? 0.08 : 0.02,
+    }),
+  ]));
+  materials.site = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(PALETTE.accent),
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false,
+  });
+
+  const batches = new Map();
   const colliders = [];
   const shootables = [];
 
-  function box(width, height, depth, x, y, z, material) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), materials[material]);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = true;
+  function batchFor(material) {
+    if (!batches.has(material)) batches.set(material, []);
+    return batches.get(material);
+  }
+
+  function place(geometry, material, x, y, z, collision = true) {
+    geometry.translate(x, y, z);
+    batchFor(material).push(geometry);
+    if (collision) {
+      geometry.computeBoundingBox();
+      colliders.push(geometry.boundingBox.clone());
+    }
+  }
+
+  function block(width, height, depth, x, y, z, material, collision = true) {
+    place(new THREE.BoxGeometry(width, height, depth), material, x, y, z, collision);
+  }
+
+  function column(radius, height, x, base, z, material, collision = true) {
+    place(new THREE.CylinderGeometry(radius, radius, height, 12), material, x, base + height / 2, z, collision);
+  }
+
+  function mergeGeometries(geometries) {
+    const flattened = geometries.map((geometry) => (geometry.index ? geometry.toNonIndexed() : geometry.clone()));
+    const count = flattened.reduce((total, geometry) => total + geometry.attributes.position.count, 0);
+    const merged = new THREE.BufferGeometry();
+    merged.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(count * 3), 3));
+    merged.setAttribute('normal', new THREE.Float32BufferAttribute(new Float32Array(count * 3), 3));
+    merged.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(count * 2), 2));
+
+    let vertexOffset = 0;
+    for (const geometry of flattened) {
+      merged.attributes.position.array.set(geometry.attributes.position.array, vertexOffset * 3);
+      merged.attributes.normal.array.set(geometry.attributes.normal.array, vertexOffset * 3);
+      merged.attributes.uv.array.set(geometry.attributes.uv.array, vertexOffset * 2);
+      vertexOffset += geometry.attributes.position.count;
+      geometry.dispose();
+    }
+
+    for (const geometry of geometries) geometry.dispose();
+    merged.computeBoundingSphere();
+    return merged;
+  }
+
+  block(MAP_WIDTH, 0.4, MAP_DEPTH, 0, -0.2, 0, 'canvas');
+  block(0.6, WALL_HEIGHT, MAP_DEPTH, -MAP_WIDTH / 2 - 0.1, WALL_HEIGHT / 2 - 0.2, 0, 'surface');
+  block(0.6, WALL_HEIGHT, MAP_DEPTH, MAP_WIDTH / 2 + 0.1, WALL_HEIGHT / 2 - 0.2, 0, 'surface');
+  block(MAP_WIDTH, WALL_HEIGHT, 0.6, 0, WALL_HEIGHT / 2 - 0.2, -MAP_DEPTH / 2 - 0.1, 'surface');
+  block(MAP_WIDTH, WALL_HEIGHT, 0.6, 0, WALL_HEIGHT / 2 - 0.2, MAP_DEPTH / 2 + 0.1, 'surface');
+
+  for (let x = -15; x <= 15; x += 6) {
+    for (const z of [-MAP_DEPTH / 2 + 0.5, MAP_DEPTH / 2 - 0.5]) {
+      block(0.8, 3.4, 1.8, x, 1.5, z, 'muted');
+    }
+  }
+
+  for (const side of [-1, 1]) {
+    block(0.8, 2.8, 7, 3.2 * side, 1.4, -7.5, 'muted');
+    block(0.8, 2.8, 7, 3.2 * side, 1.4, 7.5, 'muted');
+    block(7, 2.2, 0.8, 9 * side, 1.1, -3.5, 'surface');
+    block(7, 2.2, 0.8, 9 * side, 1.1, 3.5, 'surface');
+  }
+
+  block(6, 0.02, 6, -11, 0.012, -10, 'site', false);
+  block(6, 0.02, 6, 11, 0.012, 10, 'site', false);
+  block(1.1, 0.016, 27, -8.5, 0.008, 0, 'muted', false);
+  block(1.1, 0.016, 27, 8.5, 0.008, 0, 'muted', false);
+  block(23, 0.016, 1.1, 0, 0.008, -6, 'hairline', false);
+  block(23, 0.016, 1.1, 0, 0.008, 6, 'hairline', false);
+
+  block(4, 0.8, 4, -15.2, 0.4, -5, 'surface');
+  for (let index = 0; index < 4; index += 1) {
+    const height = 0.18 + index * 0.18;
+    block(1.1, height, 1.2, -16.6, height / 2, -3 + index * -0.9, 'surface');
+  }
+  block(4, 0.8, 4, 15.2, 0.4, 2, 'surface');
+  for (let index = 0; index < 4; index += 1) {
+    const height = 0.18 + index * 0.18;
+    block(1.1, height, 1.2, 16.6, height / 2, 0 + index * 0.9, 'surface');
+  }
+
+  block(1.7, 1.2, 1.7, -10.5, 0.6, -10, 'hairline');
+  block(1.5, 1.0, 1.5, -12.4, 0.5, -11.5, 'hairline');
+  block(1.3, 1.7, 1.3, -10.5, 1.7, -10, 'hairline');
+  block(2.4, 0.9, 1.2, -8, 0.45, -7.5, 'hairline');
+  block(1.2, 1.8, 1.2, -6.8, 0.9, -12.5, 'hairline');
+  block(1.1, 2.2, 1.1, -10.5, 1.1, -6, 'hairline');
+
+  block(1.7, 1.2, 1.7, 10.5, 0.6, 10, 'hairline');
+  block(1.5, 1.0, 1.5, 12.4, 0.5, 11.5, 'hairline');
+  block(1.3, 1.7, 1.3, 10.5, 1.7, 10, 'hairline');
+  block(1.2, 0.9, 2.4, 8, 0.45, 7.5, 'hairline');
+  block(1.2, 1.8, 1.2, 6.8, 0.9, 12.5, 'hairline');
+  block(1.1, 2.2, 1.1, 13.5, 1.1, 6, 'hairline');
+
+  block(1.6, 1.0, 1.6, -14.5, 0.5, 1.5, 'hairline');
+  block(2.2, 1.1, 1.1, -12, 0.55, 4.5, 'hairline');
+  block(1.2, 1.4, 1.2, -5.8, 0.7, 9.5, 'hairline');
+  block(2.5, 0.9, 1.1, -8, 0.45, 13, 'hairline');
+  block(1.1, 1.5, 1.1, -2.5, 0.75, -12.5, 'hairline');
+  block(1.6, 1.0, 1.6, 14.5, 0.5, -1.5, 'hairline');
+  block(1.1, 2.2, 1.1, 12, 0.55, -4.5, 'hairline');
+  block(1.2, 1.4, 1.2, 5.8, 0.7, -9.5, 'hairline');
+  block(1.1, 0.9, 2.5, 8, 0.45, -13, 'hairline');
+  block(1.1, 1.5, 1.1, 2.5, 0.75, 12.5, 'hairline');
+
+  block(1.6, 2.3, 1.6, 0, 1.15, -2, 'surface');
+  block(1.2, 1.2, 2.6, -4.8, 0.6, 0, 'hairline');
+  block(2.6, 1.2, 1.2, 4.8, 0.6, 0, 'hairline');
+  block(1.4, 1.5, 1.4, 0, 0.75, 8.5, 'hairline');
+  block(1.4, 1.5, 1.4, 0, 0.75, -8.5, 'hairline');
+
+  for (const [x, z] of [[-11, -10], [11, 10], [0, 0], [-15.2, -5], [15.2, 2]]) {
+    column(0.13, 4.3, x, 0, z, 'muted');
+    column(0.48, 0.24, x, 4.42, z, 'ink', false);
+    column(0.16, 0.1, x, 4.32, z, 'accent', false);
+    const lamp = new THREE.PointLight(new THREE.Color(PALETTE.accent), x === 0 && z === 0 ? 18 : 32, 14, 1.75);
+    lamp.position.set(x, 4.5, z);
+    lamps.add(lamp);
+  }
+
+  for (const [material, geometries] of batches) {
+    const mesh = new THREE.Mesh(mergeGeometries(geometries), materials[material]);
+    mesh.castShadow = material !== 'site';
     mesh.receiveShadow = true;
-    group.add(mesh);
-    colliders.push(new THREE.Box3().setFromObject(mesh));
+    const materialGroup = new THREE.Group();
+    materialGroup.name = `${material}-geometry`;
+    materialGroup.add(mesh);
+    solids.add(materialGroup);
     shootables.push(mesh);
-    return mesh;
   }
 
-  function siteLabel(text, x, z) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 192;
-    canvas.height = 192;
-    const context = canvas.getContext('2d');
-    context.fillStyle = 'rgba(7, 13, 22, 0.82)';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.strokeStyle = PALETTE.accent;
-    context.lineWidth = 10;
-    context.strokeRect(12, 12, canvas.width - 24, canvas.height - 24);
-    context.fillStyle = PALETTE.accent;
-    context.font = 'bold 118px Inter, system-ui, sans-serif';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText(text, canvas.width / 2, canvas.height / 2 + 8);
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.anisotropy = 4;
-    const label = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.1, 3.1),
-      new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 0.84 }),
-    );
-    label.rotation.x = -Math.PI / 2;
-    label.position.set(x, 0.52, z);
-    group.add(label);
-  }
+  scene.fog = new THREE.FogExp2(new THREE.Color(PALETTE.canvas), 0.021);
+  scene.add(new THREE.HemisphereLight(new THREE.Color(PALETTE.hairline), new THREE.Color(PALETTE.canvas), 1.05));
 
-  // A 34 x 30 m tactical block: left, centre and right lanes feed a pair of bomb sites.
-  box(34.4, 0.4, 30.4, 0, -0.2, 0, 'canvas');
-  box(0.4, 5.0, 30.4, -17.2, 2.5, 0, 'surface');
-  box(0.4, 5.0, 30.4, 17.2, 2.5, 0, 'surface');
-  box(34.4, 5.0, 0.4, 0, 2.5, -15.2, 'surface');
-  box(34.4, 5.0, 0.4, 0, 2.5, 15.2, 'surface');
-
-  // Main connectors and corner pockets.
-  box(8.0, 4.0, 1.0, -10.0, 2.0, -7.0, 'surface');
-  box(8.0, 4.0, 1.0, 10.0, 2.0, 6.0, 'surface');
-  box(1.0, 4.0, 6.0, -6.0, 2.0, 8.0, 'surface');
-  box(1.0, 4.0, 6.0, 6.0, 2.0, -8.0, 'surface');
-
-  // Site A, northwest: platform, crates and sight-line breaks.
-  box(8.0, 0.5, 7.0, -11.0, 0.25, -10.0, 'surface');
-  box(1.8, 1.5, 1.8, -14.0, 1.25, -12.0, 'hairline');
-  box(1.8, 1.2, 1.8, -11.0, 1.1, -12.0, 'hairline');
-  box(1.8, 1.8, 1.8, -8.0, 1.4, -12.0, 'hairline');
-  box(2.6, 0.8, 2.6, -11.0, 0.9, -8.0, 'hairline');
-  box(1.0, 2.6, 4.0, -6.0, 1.3, -11.0, 'hairline');
-
-  // Site B, southeast: long approach, stacked crates and a knife-corner.
-  box(8.0, 0.5, 7.0, 11.0, 0.25, 10.0, 'surface');
-  box(1.8, 1.5, 1.8, 14.0, 1.25, 12.0, 'hairline');
-  box(1.8, 1.2, 1.8, 11.0, 1.1, 12.0, 'hairline');
-  box(1.8, 1.8, 1.8, 8.0, 1.4, 12.0, 'hairline');
-  box(2.6, 0.8, 2.6, 11.0, 0.9, 8.0, 'hairline');
-  box(1.0, 2.6, 4.0, 6.0, 1.3, 11.0, 'hairline');
-
-  // Mid obstacles, spawn cover and small crates that reward crouched peeks.
-  box(2.2, 3.6, 2.2, 0, 1.8, 0, 'hairline');
-  box(4.0, 1.0, 1.2, -4.0, 0.5, 2.0, 'hairline');
-  box(1.2, 1.0, 4.0, 4.0, 0.5, -2.0, 'hairline');
-  box(1.6, 0.7, 1.6, -14.0, 0.35, 0.0, 'hairline');
-  box(1.6, 0.7, 1.6, 14.0, 0.35, -1.0, 'hairline');
-  box(2.4, 0.9, 1.2, -3.0, 0.45, 12.5, 'hairline');
-  box(2.4, 0.9, 1.2, 3.0, 0.45, 12.5, 'hairline');
-  box(2.4, 0.9, 1.2, -3.0, 0.45, -12.5, 'hairline');
-  box(2.4, 0.9, 1.2, 3.0, 0.45, -12.5, 'hairline');
-
-  // Nightfall additions: chokepoints, stacked cover and site approach walls.
-  box(0.9, 2.3, 5.5, -3.5, 1.15, -4.0, 'surface');
-  box(0.9, 2.3, 5.5, 3.5, 1.15, 4.0, 'surface');
-  box(4.5, 1.5, 0.9, -12.5, 0.75, 4.5, 'hairline');
-  box(4.5, 1.5, 0.9, 12.5, 0.75, -4.5, 'hairline');
-  box(1.2, 1.1, 1.2, -8.5, 0.55, 1.5, 'hairline');
-  box(1.2, 1.1, 1.2, 8.5, 0.55, -1.5, 'hairline');
-  box(1.4, 2.0, 1.4, -1.5, 1.0, 7.0, 'hairline');
-  box(1.4, 2.0, 1.4, 1.5, 1.0, -7.0, 'hairline');
-  box(2.8, 0.7, 0.7, -11.0, 0.35, 8.0, 'hairline');
-  box(2.8, 0.7, 0.7, 11.0, 0.35, -8.0, 'hairline');
-
-  // Site landmarks: raised cover protects rotates while keeping bombsite labels readable.
-  box(1.8, 2.1, 0.7, -16.0, 1.05, -9.0, 'hairline');
-  box(1.8, 2.1, 0.7, 16.0, 1.05, 9.0, 'hairline');
-  box(0.7, 1.7, 2.8, -6.5, 0.85, -5.0, 'hairline');
-  box(0.7, 1.7, 2.8, 6.5, 0.85, 5.0, 'hairline');
-  box(2.2, 1.1, 2.2, -16.0, 0.55, -4.0, 'hairline');
-  box(2.2, 1.1, 2.2, 16.0, 0.55, 4.0, 'hairline');
-
-  // Low site-entry barriers and scatter crates create peek opportunities.
-  box(2.6, 1.3, 1.0, -4.0, 0.65, -11.0, 'hairline');
-  box(2.6, 1.3, 1.0, 4.0, 0.65, 11.0, 'hairline');
-  box(1.0, 1.3, 2.6, -6.0, 0.65, -13.5, 'hairline');
-  box(1.0, 1.3, 2.6, 6.0, 0.65, 13.5, 'hairline');
-  box(1.6, 1.0, 1.6, -15.0, 0.5, 1.5, 'hairline');
-  box(1.6, 1.0, 1.6, 15.0, 0.5, -1.5, 'hairline');
-  box(2.1, 1.2, 1.2, -14.0, 0.6, -1.0, 'hairline');
-  box(2.1, 1.2, 1.2, 14.0, 0.6, 1.0, 'hairline');
-  box(1.2, 1.2, 2.1, -7.5, 0.6, 13.0, 'hairline');
-  box(1.2, 1.2, 2.1, 7.5, 0.6, -13.0, 'hairline');
-
-  // Amber site markers and two cool ceiling strips for navigation.
-  for (const [x, z] of [[-11, -10], [11, 10]]) {
-    const marker = new THREE.Mesh(
-      new THREE.BoxGeometry(5.5, 0.02, 5.5),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(PALETTE.accent), transparent: true, opacity: 0.08, roughness: 1 }),
-    );
-    marker.position.set(x, 0.01, z);
-    group.add(marker);
-
-  }
-  siteLabel('A', -11, -10);
-  siteLabel('B', 11, 10);
-
-  scene.fog = new THREE.FogExp2(new THREE.Color('#536a88'), 0.022);
-
-  const sky = new THREE.HemisphereLight(new THREE.Color('#a9c1e8'), new THREE.Color(PALETTE.canvas), 1.35);
-  scene.add(sky);
-
-  const key = new THREE.DirectionalLight(new THREE.Color('#f8c675'), 1.6);
-  key.position.set(12, 16, 9);
-  key.target.position.set(0, 0, 0);
+  const key = new THREE.DirectionalLight(new THREE.Color(PALETTE.accent), 1.45);
+  key.position.set(14, 19, 11);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
-  key.shadow.camera.left = -20;
-  key.shadow.camera.right = 20;
-  key.shadow.camera.top = 20;
-  key.shadow.camera.bottom = -20;
-  key.shadow.camera.far = 55;
+  key.shadow.camera.left = -22;
+  key.shadow.camera.right = 22;
+  key.shadow.camera.top = 22;
+  key.shadow.camera.bottom = -22;
+  key.shadow.camera.far = 65;
   key.shadow.bias = -0.0006;
   scene.add(key, key.target);
 
-  const fill = new THREE.DirectionalLight(new THREE.Color(PALETTE.ink), 0.72);
-  fill.position.set(-10, 12, -8);
-  scene.add(fill);
-
-  const rim = new THREE.DirectionalLight(new THREE.Color('#8fb7e5'), 0.48);
-  rim.position.set(-14, 9, 10);
-  scene.add(rim);
-
-  for (const [x, z, intensity] of [[-11, -10, 30], [11, 10, 30], [0, 0, 16]]) {
-    const lamp = new THREE.PointLight(new THREE.Color(PALETTE.accent), intensity, 13, 1.8);
-    lamp.position.set(x, 3.2, z);
-    group.add(lamp);
-  }
+  const fill = new THREE.DirectionalLight(new THREE.Color(PALETTE.ink), 0.62);
+  fill.position.set(-12, 14, -9);
+  const rim = new THREE.DirectionalLight(new THREE.Color(PALETTE.muted), 0.5);
+  rim.position.set(-15, 10, 11);
+  scene.add(fill, rim);
 
   return { colliders, shootables, group };
 }
