@@ -513,6 +513,7 @@ export function createHud() {
       nodes.action.focus();
     },
     hideOverlay() { nodes.overlay.hidden = true; },
+    overlayHidden() { return nodes.overlay.hidden; },
     onPlay(handler) { nodes.action.addEventListener('click', handler); },
     onBuy(handler) {
       nodes.buyGrid.addEventListener('click', (event) => {

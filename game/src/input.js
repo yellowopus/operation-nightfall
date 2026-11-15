@@ -23,7 +23,7 @@ export function createInput(canvas, onLockChange) {
     state.lookY += event.movementY;
   });
   window.addEventListener('mousedown', (event) => {
-    if (state.locked && event.button === 0) state.firing = true;
+    if (event.button === 0) state.firing = true;
   });
   window.addEventListener('contextmenu', (event) => event.preventDefault());
   window.addEventListener('mouseup', (event) => {

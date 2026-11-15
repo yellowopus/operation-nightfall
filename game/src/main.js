@@ -31,7 +31,7 @@ const weapon = createWeapon(camera, { scene });
 const bots = createBots(scene, world.shootables, world.colliders);
 const grenades = createGrenades(scene, world.colliders);
 const input = createInput(renderer.domElement, (locked) => {
-  if (!locked && game.rounds.state.phase === 'live') setOverlay('paused');
+  if (!locked && game.rounds.state.phase === 'live' && !hud.overlayHidden()) setOverlay('paused');
 });
 const game = { rounds: createRounds(), botFire: [], deathTimer: 0, triggerReady: true };
 const hud = createHud();
