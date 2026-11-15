@@ -33,8 +33,8 @@ const grenades = createGrenades(scene, world.colliders);
 const input = createInput(renderer.domElement, (locked) => {
   if (!locked && game.rounds.state.phase === 'live') setOverlay('paused');
 });
-const hud = createHud();
 const game = { rounds: createRounds(), botFire: [], deathTimer: 0, triggerReady: true };
+const hud = createHud();
 
 const shotRay = new THREE.Raycaster();
 const botRay = new THREE.Raycaster();
@@ -297,3 +297,4 @@ hud.onBuy((itemId) => {
 
 beginBuy();
 render();
+

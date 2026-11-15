@@ -359,8 +359,8 @@ function buildShell() {
   const ammoReserve = el('span', 'night-ammo-reserve', '/ 112');
   const reloadRing = el('span', 'night-reload');
   ammo.append(ammoMag, ammoReserve, reloadRing);
-  grenades.append(el('span', 'night-label', 'Frag'), el('b', '', '0'));
   const grenades = el('div', 'night-grenades');
+  grenades.append(el('span', 'night-label', 'Frag'), el('b', '', '0'));
   weapon.append(weaponName, ammo, grenades);
 
   const feed = el('div', 'night-feed');
@@ -381,7 +381,7 @@ function buildShell() {
   overlay.append(panel);
 
   root.append(style, damage, crosshair, hitmarker, center, feed, vitals, weapon, overlay);
-  return { root, timer, scoreUs, scoreThem, scoreRound, healthValue, healthBar, armorValue, armorBar, money, weaponName, ammo, ammoMag, ammoReserve, reloadRing, grenades, feed, crosshair, hitmarker, damage, overlay, title, subtitle, copy, action, buyGrid };
+  return { root, timer, scoreUs, scoreThem, scoreRound, healthValue, healthBar, armorValue, armorBar, money, weapon, weaponName, ammo, ammoMag, ammoReserve, reloadRing, grenades, feed, crosshair, hitmarker, damage, overlay, title, subtitle, copy, action, buyGrid };
 }
 
 function setBar(bar, ratio, color) {
