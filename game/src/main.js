@@ -9,8 +9,6 @@ import { createHud } from './hud.js';
 import { createRounds } from './rounds.js';
 
 const PLAYER_DAMAGE = { min: 8, max: 17 };
-const BOT_ACCURACY = 0.34;
-const BOT_ACCURACY_FALLOFF = 0.007;
 const BOT_MAX_RANGE = 34;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -29,7 +27,7 @@ scene.add(camera);
 
 const world = createWorld(scene);
 const player = createPlayer(world.colliders);
-const weapon = createWeapon(camera);
+const weapon = createWeapon(camera, { scene });
 const bots = createBots(scene, world.shootables, world.colliders);
 const grenades = createGrenades(scene, world.colliders);
 const input = createInput(renderer.domElement, (locked) => {
@@ -108,24 +106,31 @@ function awardBotKill(victim) {
 
 function shoot() {
   if (!weapon.ready() || !weapon.takeRound()) return;
-  weapon.pullTrigger();
-  const kick = weapon.spec();
+  const fireTime = performance.now() / 1000;
+  weapon.pullTrigger({ time: fireTime });
+  const kick = weapon.recoil();
   const recoilScale = 1
     + Math.min(0.45, player.groundSpeed() / 7.6 * 0.3)
     + (player.state.onGround ? 0 : 0.35)
     - (player.state.crouching ? 0.15 : 0);
-  player.recoil(kick.recoilPitch * recoilScale, (Math.random() - 0.5) * kick.recoilYaw * 2 * recoilScale);
+  player.recoil(kick.vertical * recoilScale, kick.horizontal * recoilScale);
   weapon.addHeat(weapon.spec().automatic ? 0.075 : 0.18);
   const spread = weapon.spread(player.groundSpeed(), player.state, weapon.state.heat);
   shotDirection.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread, -1).normalize().applyQuaternion(camera.quaternion);
   shotRay.set(camera.getWorldPosition(new THREE.Vector3()), shotDirection);
   shotRay.far = 120;
   const hit = shotRay.intersectObjects(shootables, false)[0];
+  const traceEnd = hit?.point ?? camera.getWorldPosition(new THREE.Vector3()).addScaledVector(shotDirection, shotRay.far);
+  weapon.spawnTracer(weapon.muzzleWorld(), traceEnd, { hit: Boolean(hit) });
+  bots.alertAt(traceEnd);
   if (!hit) return;
   const victim = hit.object.userData.target;
   const isHead = hit.object.userData.part === 'head';
   const damageFall = 1 - Math.min(0.38, Math.max(0, (hit.distance - 16) / 90));
-  const damage = Math.round((isHead ? weapon.spec().headDamage : weapon.spec().damage) * damageFall);
+  const weaponSpec = weapon.spec();
+  const damage = Math.round(
+    weaponSpec.damage * (isHead ? weaponSpec.headshotMultiplier : 1) * damageFall,
+  );
   if (victim?.alive) {
     if (victim.id?.startsWith('bot-')) {
       const killed = bots.damage(hit.object, damage);
@@ -133,7 +138,6 @@ function shoot() {
     }
     hud.hitMarker(Boolean(victim.alive === false));
   }
-  bots.alertAt(hit.point);
 }
 
 function botCanHit(bot) {
@@ -143,7 +147,7 @@ function botCanHit(bot) {
   const movementPenalty = Math.min(0.14, movement * 0.11)
     + (player.state.crouching ? 0.07 : 0)
     + (player.state.onGround ? 0 : 0.09);
-  return Math.random() < Math.max(0.03, BOT_ACCURACY - distance * BOT_ACCURACY_FALLOFF) * (1 - movementPenalty);
+  return Math.random() < Math.max(0.03, 0.46 - bot.aimError) * (1 - movementPenalty);
 }
 
 function botFire(bot) {
@@ -172,7 +176,8 @@ function botFire(bot) {
 }
 
 function grenadeExplode(position) {
-  const radius = 6.2;
+  const grenadeSpec = weapon.specFor('grenade');
+  const radius = grenadeSpec.blastRadius;
   const victims = [
     ...bots.items.map((bot) => ({ bot, position: bot.position, alive: bot.alive, height: 1.5 })),
     { player: true, position: player.state.position, alive: player.state.alive, height: player.state.eye },
@@ -184,7 +189,7 @@ function grenadeExplode(position) {
     const dy = victim.height - position.y;
     const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (distance > radius) continue;
-    const damage = Math.round(92 * (1 - distance / radius));
+    const damage = Math.round(grenadeSpec.damage * (1 - distance / radius));
     const direction = new THREE.Vector3().subVectors(
       new THREE.Vector3(victim.position.x, victim.height, victim.position.z),
       position,
